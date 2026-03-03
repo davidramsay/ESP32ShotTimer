@@ -4,7 +4,7 @@
   LiquidCrystal_I2C lcd(0x27, 16, 2);  // 0x20 is common MCP23008 address
 
 // ---- Pins ----
-const int SHOT_INPUT_PIN = D1;
+const int SHOT_INPUT_PIN = A1;
 const int BUZZER_PIN = D2;
 const int START_STOP_PIN = D3;
 const int UP_BUTTON_PIN = D7;
@@ -18,8 +18,15 @@ unsigned long lastShotTime;
 unsigned long stopHoldStart;
 unsigned long lastScrollTime = 0;
 
+unsigned long lastShotDetectTime = 0;
+#define SHOT_DEBOUNCE_MS 60   // adjust 40–120ms
+#define SHOT_THRESHOLD 3000      // adjust after testing
+#define SHOT_HYSTERESIS 1000      // prevents chatter
+
+bool shotAboveThreshold = false;
+
+
 bool firstShotCaptured = false;
-bool lastShotState = HIGH;
 bool lastButtonState = HIGH;
 bool lastUpState = HIGH;
 bool lastDownState = HIGH;
@@ -72,7 +79,6 @@ void loop()
   unsigned long now = millis();
 
   bool buttonState = digitalRead(START_STOP_PIN);
-  bool shotState = digitalRead(SHOT_INPUT_PIN);
   bool upState = digitalRead(UP_BUTTON_PIN);
   bool downState = digitalRead(DOWN_BUTTON_PIN);
 
@@ -110,43 +116,58 @@ void loop()
         currentState = TIMING;
       }
       break;
-
     case TIMING:
+    { int shotValue = analogRead(SHOT_INPUT_PIN);
 
-      // Shot rising edge
-      if (shotState == LOW && lastShotState == HIGH)
+      // Track instantaneous peak naturally through loop frequency
+      if (!shotAboveThreshold &&
+          shotValue > SHOT_THRESHOLD &&
+          now - lastShotDetectTime > SHOT_DEBOUNCE_MS)
       {
-        if (splitCount < MAX_SPLITS)
-        {
-          unsigned long split;
+          shotAboveThreshold = true;
+          lastShotDetectTime = now;
 
-          if (!firstShotCaptured)
+          if (splitCount < MAX_SPLITS)
           {
-            split = now - buzzerTime;
-            firstShotCaptured = true;
-          }
-          else
-          {
-            split = now - lastShotTime;
-          }
+              unsigned long split;
 
-          lastShotTime = now;
+              if (!firstShotCaptured)
+              {
+                  split = now - buzzerTime;
+                  firstShotCaptured = true;
+              }
+              else
+              {
+                  split = now - lastShotTime;
+              }
 
-          splits[splitCount] = split / 1000.0;
-          splitCount++;
-        }
+              lastShotTime = now;
+              splits[splitCount] = split / 1000.0;
+              splitCount++;
+
+              Serial.print("$ ");   // debug marker
+              Serial.println(splitCount);
+          }
       }
 
-      // Stop pressed once
-      if (buttonState == LOW && lastButtonState == HIGH)
+      // Hysteresis reset
+      if (shotAboveThreshold &&
+          shotValue < (SHOT_THRESHOLD - SHOT_HYSTERESIS))
       {
-        scrollIndex = 0;
-        currentState = REVIEW;
-        displaySplits();
+          shotAboveThreshold = false;
       }
 
-      break;
+          // Stop pressed once
+          if (buttonState == LOW && lastButtonState == HIGH)
+          {
+              scrollIndex = 0;
+              currentState = REVIEW;
+              displaySplits();
+          }
 
+
+    break;
+  }
     case REVIEW:
 
   // Scroll UP
@@ -196,7 +217,6 @@ void loop()
   break;
   }
 
-  lastShotState = shotState;
   lastButtonState = buttonState;
   lastUpState = upState;
   lastDownState = downState;
