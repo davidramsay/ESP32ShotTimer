@@ -188,7 +188,7 @@ void loop()
     if (splitCount == 0)
       maxPage = 0;
     else
-      maxPage = 1 + ((splitCount + 1) / 2);  
+      maxPage = 1 + ((splitCount + 1) / 2);
       // 0 = TOT
       // 1 = AVG/FAST
       // remaining = split pages (2 splits per page)
@@ -320,8 +320,7 @@ void displaySplits()
   }
 
   // ---------- SPLIT PAGES ----------
-  int index = scrollIndex - 2;
-
+  int index = (scrollIndex - 2) * 2;
   if (index < splitCount)
   {
     lcd.setCursor(0, 0);
